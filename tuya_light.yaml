@@ -5,10 +5,10 @@
 # Untested and incomplete.
 ---
 substitutions:
-  light_name: "SkyFan DC Light"
+  light_name: "skyfandclight"
 
 light:
-  - id: skyfan_light
+  - id: skyfandclight
     platform: tuya
     name: ${light_name}
     switch_datapoint: 15
