@@ -15,10 +15,10 @@ packages:
     file: sensor_rssi.yaml
 
 substitutions:
-  device_name: easy-skyfandc
-  fan_name: SkyFanDC
-  light_name: SkyFanDC-Light
-  temp_name: SkyFanDC-Temp
+  device_name: easyskyfandc
+  fan_name: skyfandc
+  light_name: skyfandclight
+  temp_name: skyfandctemp
   tmp117_name: "SkyFanDC TMP117"  
   skyfan_model: "SKY1203"
   fan_rssi: "SkyFanDC-RSSI"
