@@ -47,7 +47,7 @@ esphome:
   min_version: 2025.12.0
 
   project:
-    name: tinglis1.skyfandc
+    name: "tinglis1_skyfandc"
     version: "0.3"
 
   # If set turn the fan on when powered on.
