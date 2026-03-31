@@ -19,7 +19,7 @@ light:
 #    color_temperature_max_value: 2
 #    color_temperature_invert: true
 #    color_mode: BRIGHTNESS # [color_mode] is an invalid option for [light.tuya]. 
-    restore_mode: NO_RESTORE # the hardware turns the light on already.
+    restore_mode: RESTORE_DEFAULT_OFF # the hardware turns the light on already.
     disabled_by_default: true
 
 # select:
