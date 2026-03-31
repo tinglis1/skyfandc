@@ -1,0 +1,175 @@
+# -----------------------------------------------------------------------------
+# SkyFan DC (Tuya MCU) - ESPHome Configuration
+# -----------------------------------------------------------------------------
+# - Product: easy-skyfandc module from Egglec
+# - Board: Wemos D1 Mini (ESP8266)
+# - Tuya MCU over UART (UART0 GPIO1/GPIO3)
+# - Optional: Light + Temperature + power sensor packages (conditionally included)
+#
+# Notes:
+# - Conditional package inclusion uses Jinja expressions in ${ ... } and requires
+#   ESPHome >= 2025.12.0
+# - Logger serial is disabled because the Tuya MCU uses the UART pins
+# -----------------------------------------------------------------------------
+
+substitutions:
+  # ----------------------------
+  # Device identity
+  # ----------------------------
+  device_name: easy-skyfandc
+  fan_name: SkyFanDC
+  light_name: SkyFanDC-Light
+  temp_name: SkyFanDC-Temp
+  tmp117_name: "SkyFanDC TMP117"
+  skyfan_model: "SKY1203"
+  fan_rssi: "SkyFanDC-RSSI"
+
+  # ----------------------------
+  # Feature toggles (used by conditional packages)
+  # ----------------------------
+  enable_light: true
+  enable_temperature_sensor: true
+  enable_light_power_sensor: false
+  enable_fan_power_sensor: false
+
+  # ----------------------------
+  # Fan default settings
+  # ----------------------------
+  # Set to false to default the fan to OFF on every boot
+  default_fan_on: false
+
+  # Default speed on boot (1–6), only applies when default_fan_on is true
+  default_fan_speed: "6"
+
+  # ----------------------------
+  # Package includes (file references loaded into substitution variables)
+  # ----------------------------
+  package_light: !include
+    file: tuya_light.yaml          # Light control package
+
+  package_sensor_power_light: !include
+    file: sensor_power_light.yaml  # Faux light power monitoring package
+
+  package_sensor_ntc: !include
+    file: sensor_ntc.yaml          # NTC temperature sensor package
+
+  package_sensor_tmp117: !include
+    file: sensor_tmp117.yaml       # TMP117 temperature sensor package
+
+  package_sensor_power_fan: !include
+    file: sensor_power_fan.yaml    # Faux fan power monitoring package
+
+packages:
+  # ----------------------------
+  # Core packages (always enabled)
+  # ----------------------------
+  skyfan.tuya_fan: !include
+    file: tuya_fan.yaml
+
+  skyfan.sensor_rssi: !include
+    file: sensor_rssi.yaml
+
+  # ----------------------------
+  # Conditional packages
+  # ----------------------------
+  skyfan.tuya_light: ${ package_light if enable_light else {} }
+  skyfan.sensor_power_light: ${ package_sensor_power_light if enable_light_power_sensor else {} }
+  skyfan.sensor_ntc: ${ package_sensor_ntc if enable_temperature_sensor else {} }
+  skyfan.sensor_tmp117: ${ package_sensor_tmp117 if enable_temperature_sensor else {} }
+
+  skyfan.sensor_power_fan: ${ package_sensor_power_fan if enable_fan_power_sensor else {} }
+
+# -----------------------------------------------------------------------------
+# ESPHome Core
+# -----------------------------------------------------------------------------
+esphome:
+  name: ${device_name}
+  name_add_mac_suffix: true
+
+  # Conditional package inclusion requires ESPHome 2025.12.0+
+  min_version: 2025.12.0
+
+  project:
+    name: tinglis1.skyfandc
+    version: "0.3"
+
+  # Blink onboard LED on boot to stabilise startup (e.g., temp sensors)
+  on_boot:
+    priority: -100
+    then:
+      - switch.turn_on: led
+      - delay: 2s
+      - switch.turn_off: led
+
+# -----------------------------------------------------------------------------
+# Hardware Target
+# -----------------------------------------------------------------------------
+esp8266:
+  board: d1_mini
+
+# -----------------------------------------------------------------------------
+# Networking / Access
+# -----------------------------------------------------------------------------
+wifi:
+  # If no normal Wi-Fi credentials are provided, ESPHome will fall back to AP mode.
+  ap:
+    password: "skyfandc"
+
+captive_portal:
+
+# -----------------------------------------------------------------------------
+# Remote Management
+# -----------------------------------------------------------------------------
+api: {}
+
+ota: {}
+
+# Expose a simple web UI (useful for quick checks / debugging)
+web_server:
+  port: 80
+
+# Allow adoption/import via the ESPHome dashboard
+dashboard_import:
+  package_import_url: github://tinglis1/skyfandc/micro_skyfan2.yaml
+
+# -----------------------------------------------------------------------------
+# Logging
+# -----------------------------------------------------------------------------
+# Tuya MCU uses the UART pins, so disable the serial logger.
+logger:
+  baud_rate: 0
+
+# -----------------------------------------------------------------------------
+# Buses / Peripherals
+# -----------------------------------------------------------------------------
+# Version 0.2 has an I2C JST SH 4-pin plug and uses:
+#   SDA = GPIO4, SCL = GPIO5
+# Version 0.1 used GPIO4 as the power pin for the NTC.
+i2c:
+  sda: 4
+  scl: 5
+  scan: true
+
+# -----------------------------------------------------------------------------
+# Tuya MCU (UART)
+# -----------------------------------------------------------------------------
+# UART0 pins:
+#   RX = GPIO3 (RX0)
+#   TX = GPIO1 (TX0)
+uart:
+  rx_pin: GPIO3
+  tx_pin: GPIO1
+  baud_rate: 9600
+
+tuya:
+  id: tuyamcu
+
+# -----------------------------------------------------------------------------
+# Onboard LED (status indicator)
+# -----------------------------------------------------------------------------
+switch:
+  - platform: gpio
+    id: led
+    pin:
+      number: 2
+      inverted: true
