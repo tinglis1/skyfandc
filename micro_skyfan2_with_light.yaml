@@ -28,9 +28,7 @@ substitutions:
   # Feature toggles (used by conditional packages)
   # ----------------------------
   enable_light: true
-  enable_temperature_sensor: false
-  enable_light_power_sensor: false
-  enable_fan_power_sensor: false
+
 
   # ----------------------------
   # Fan default settings
@@ -47,17 +45,6 @@ substitutions:
   package_light: !include
     file: tuya_light.yaml          # Light control package
 
-  package_sensor_power_light: !include
-    file: sensor_power_light.yaml  # Faux light power monitoring package
-
-  package_sensor_ntc: !include
-    file: sensor_ntc.yaml          # NTC temperature sensor package
-
-  package_sensor_tmp117: !include
-    file: sensor_tmp117.yaml       # TMP117 temperature sensor package
-
-  package_sensor_power_fan: !include
-    file: sensor_power_fan.yaml    # Faux fan power monitoring package
 
 packages:
   # ----------------------------
@@ -73,11 +60,7 @@ packages:
   # Conditional packages
   # ----------------------------
   skyfan_tuya_light: ${ package_light if enable_light else {} }
-  skyfan_sensor_power_light: ${ package_sensor_power_light if enable_light_power_sensor else {} }
-  skyfan_sensor_ntc: ${ package_sensor_ntc if enable_temperature_sensor else {} }
-  skyfan_sensor_tmp117: ${ package_sensor_tmp117 if enable_temperature_sensor else {} }
 
-  skyfan_sensor_power_fan: ${ package_sensor_power_fan if enable_fan_power_sensor else {} }
 
 # -----------------------------------------------------------------------------
 # ESPHome Core
@@ -173,3 +156,11 @@ switch:
     pin:
       number: 2
       inverted: true
+
+# -----------------------------------------------------------------------------
+# OWiFi RSSI signal strength
+# -----------------------------------------------------------------------------
+sensor:
+  - platform: wifi_signal
+    name: ${fan_rssi}
+    update_interval: 60s
