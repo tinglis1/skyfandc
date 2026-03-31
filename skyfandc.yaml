@@ -67,17 +67,17 @@ esphome:
 # -----------------------------------------------------------------------------
 # Packages
 # -----------------------------------------------------------------------------
-# packages:
+packages:
   # ----------------------------
   # Core packages (always enabled)
   # ----------------------------
-  # skyfan_tuya_fan: !include
-  #   file: tuya_fan.yaml
+  skyfan_tuya_fan: !include
+    file: tuya_fan.yaml
 
   # ----------------------------
   # Conditional packages
   # ----------------------------
-  # skyfan_tuya_light: ${ package_light if enable_light else {} }
+  skyfan_tuya_light: ${ package_light if enable_light else {} }
 
 
 # -----------------------------------------------------------------------------
@@ -109,7 +109,7 @@ web_server:
 
 # Allow adoption/import via the ESPHome dashboard
 dashboard_import:
-  package_import_url: github://tinglis1/skyfandc/micro_skyfan2.yaml
+  package_import_url: github://tinglis1/skyfandc/skyfandc.yaml@Dev
 
 # -----------------------------------------------------------------------------
 # Logging
