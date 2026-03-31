@@ -53,7 +53,7 @@ esphome:
   min_version: 2025.12.0
 
   project:
-    name: tinglis1_skyfandc
+    name: tinglis1.skyfandc
     version: "0.3"
 
   # Blink onboard LED on boot to stabilise startup (e.g., temp sensors)
