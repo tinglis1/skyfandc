@@ -28,7 +28,7 @@ substitutions:
   # Feature toggles (used by conditional packages)
   # ----------------------------
   enable_light: true
-  enable_temperature_sensor: true
+  enable_temperature_sensor: false
   enable_light_power_sensor: false
   enable_fan_power_sensor: false
 
