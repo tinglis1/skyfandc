@@ -91,6 +91,8 @@ ota:
 wifi:
   reboot_timeout: 30min
   ap:
+    ssid: Fallback ${name}
+    min_auth_mode: WPA2
     password: "skyfandc"
 
 captive_portal:
