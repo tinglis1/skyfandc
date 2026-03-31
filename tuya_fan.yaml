@@ -61,7 +61,7 @@ fan:
     output: skyfan_speed
     direction_output: skyfan_direction
     speed_count: 6
-    restore_mode: NO_RESTORE
+    restore_mode: RESTORE_DEFAULT_OFF # NO_RESTORE not compiling.
 
 # -----------------------------------------------------------------------------
 # Outputs (Template)
