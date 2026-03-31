@@ -19,8 +19,6 @@ substitutions:
   device_name: easy-skyfandc
   fan_name: SkyFanDC
   light_name: SkyFanDC-Light
-  temp_name: SkyFanDC-Temp
-  tmp117_name: "SkyFanDC TMP117"
   skyfan_model: "SKY1203"
   fan_rssi: "SkyFanDC-RSSI"
 
@@ -28,7 +26,6 @@ substitutions:
   # Feature toggles (used by conditional packages)
   # ----------------------------
   enable_light: true
-
 
   # ----------------------------
   # Fan default settings
@@ -52,9 +49,6 @@ packages:
   # ----------------------------
   skyfan_tuya_fan: !include
     file: tuya_fan.yaml
-
-  skyfan_sensor_rssi: !include
-    file: sensor_rssi.yaml
 
   # ----------------------------
   # Conditional packages
