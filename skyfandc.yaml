@@ -163,8 +163,8 @@ light:
     # color_temperature_invert: true
     # cold_white_color_temperature: 6500 K
     # warm_white_color_temperature: 3000 K
-    restore_mode: RESTORE_DEFAULT_OFF
-    disabled_by_default: true
+    restore_mode: RESTORE_DEFAULT_ON
+    disabled_by_default: false
 
 # -----------------------------------------------------------------------------
 # Tuya Datapoint Entities
