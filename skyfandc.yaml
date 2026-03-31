@@ -12,104 +12,67 @@
 # - Logger serial is disabled because the Tuya MCU uses the UART pins
 # -----------------------------------------------------------------------------
 
+# -----------------------------------------------------------------------------
+# Substitutions
+# -----------------------------------------------------------------------------
 substitutions:
   # ----------------------------
   # Device identity
   # ----------------------------
+  name: skyfandc
   device_name: easy-skyfandc
   fan_name: SkyFanDC
   light_name: SkyFanDC-Light
   skyfan_model: "SKY1203"
   fan_rssi: "SkyFanDC-RSSI"
-
-  # ----------------------------
-  # Feature toggles (used by conditional packages)
-  # ----------------------------
-  enable_light: true
-
+  
   # ----------------------------
   # Fan default settings
   # ----------------------------
   # Set to false to default the fan to OFF on every boot
-  default_fan_on: false
-
   # Default speed on boot (1–6), only applies when default_fan_on is true
+  default_fan_on: "false"
   default_fan_speed: "6"
 
-  # ----------------------------
-  # Package includes (file references loaded into substitution variables)
-  # ----------------------------
-  package_light: !include
-    file: tuya_light.yaml          # Light control package
+# -----------------------------------------------------------------------------
+# Core config
+# -----------------------------------------------------------------------------
+esp8266:
+  board: d1_mini
 
-# -----------------------------------------------------------------------------
-# ESPHome Core
-# -----------------------------------------------------------------------------
 esphome:
-  name: ${device_name}
-  name_add_mac_suffix: true
+  name: ${name}
+  name_add_mac_suffix: false
 
-  # Conditional package inclusion requires ESPHome 2025.12.0+
   min_version: 2025.12.0
 
   project:
     name: tinglis1.skyfandc
     version: "0.3"
 
-  # Blink onboard LED on boot to stabilise startup (e.g., temp sensors)
+  # If set turn the fan on when powered on.
   on_boot:
-    priority: -100
-    then:
-      - switch.turn_on: led
-      - delay: 2s
-      - switch.turn_off: led
+    - priority: -200
+      then:
+        - delay: 3s
+        - if:
+            condition:
+              lambda: "return ${default_fan_on};"
+            then:
+              - fan.turn_on:
+                  id: skyfandc
+                  speed: ${default_fan_speed}
+            else:
+              - fan.turn_off: skyfandc
+    - priority: -100
+      then:
+        - switch.turn_on: led
+        - delay: 2s
+        - switch.turn_off: led
 
-# -----------------------------------------------------------------------------
-# Packages
-# -----------------------------------------------------------------------------
-packages:
-  # ----------------------------
-  # Core packages (always enabled)
-  # ----------------------------
-  skyfan_tuya_fan: !include
-    file: tuya_fan.yaml
-
-  # ----------------------------
-  # Conditional packages
-  # ----------------------------
-  skyfan_tuya_light: ${ package_light if enable_light else {} }
-
-
-# -----------------------------------------------------------------------------
-# Hardware Target
-# -----------------------------------------------------------------------------
-esp8266:
-  board: d1_mini
-
-# -----------------------------------------------------------------------------
-# Networking / Access
-# -----------------------------------------------------------------------------
-wifi:
-  # If no normal Wi-Fi credentials are provided, ESPHome will fall back to AP mode.
-  ap:
-    password: "skyfandc"
-
-captive_portal:
-
-# -----------------------------------------------------------------------------
-# Remote Management
-# -----------------------------------------------------------------------------
-api: {}
-
-ota: {}
-
-# Expose a simple web UI (useful for quick checks / debugging)
-web_server:
-  port: 80
-
-# Allow adoption/import via the ESPHome dashboard
+#Dashboard import if you want to adopt the device on your esphome dashboard
 dashboard_import:
-  package_import_url: github://tinglis1/skyfandc/skyfandc.yaml@Dev
+  package_import_url: github://tinglis1/skyfandc/micro_skyfan2.yaml@Dev
 
 # -----------------------------------------------------------------------------
 # Logging
@@ -117,6 +80,23 @@ dashboard_import:
 # Tuya MCU uses the UART pins, so disable the serial logger.
 logger:
   baud_rate: 0
+
+ota:
+  - platform: esphome
+
+
+# -----------------------------------------------------------------------------
+# Tuya MCU config
+# -----------------------------------------------------------------------------
+wifi:
+  reboot_timeout: 30min
+  ap:
+    password: "skyfandc"
+
+captive_portal:
+
+web_server:
+  port: 80
 
 # -----------------------------------------------------------------------------
 # Buses / Peripherals
@@ -144,6 +124,85 @@ tuya:
   id: tuyamcu
 
 # -----------------------------------------------------------------------------
+# OWiFi RSSI signal strength
+# -----------------------------------------------------------------------------
+sensor:
+  - platform: wifi_signal
+    name: ${fan_rssi}
+    update_interval: 60s
+
+# -----------------------------------------------------------------------------
+# Fans
+# -----------------------------------------------------------------------------
+fan:
+  - id: skyfandc
+    platform: "tuya"
+    speed_datapoint: 3
+    switch_datapoint: 1
+    direction_datapoint: 8
+    name: ${fan_name}
+    restore_mode: RESTORE_DEFAULT_OFF
+    disabled_by_default: false
+    speed_count: 6
+
+# -----------------------------------------------------------------------------
+# Lights
+# -----------------------------------------------------------------------------
+light:
+  - id: skyfan_light
+    platform: tuya
+    name: ${light_name}
+    switch_datapoint: 15
+    dimmer_datapoint: 16
+    min_value: 0
+    max_value: 5
+    # color_temperature_datapoint: 19
+    # color_temperature_max_value: 2
+    # color_temperature_invert: true
+    # cold_white_color_temperature: 6500 K
+    # warm_white_color_temperature: 3000 K
+    restore_mode: RESTORE_DEFAULT_OFF
+    disabled_by_default: true
+
+# -----------------------------------------------------------------------------
+# Tuya Datapoint Entities
+# -----------------------------------------------------------------------------
+select:
+  # Datapoint 2: Mode
+  - id: datapoint_mode
+    platform: tuya
+    tuya_id: tuyamcu
+    name: "${fan_name} Mode"
+    enum_datapoint: 2
+    options:
+      0: NORMAL
+      1: ECO
+      2: SLEEP
+    disabled_by_default: true
+
+  # Datapoint 22: Timer
+  - id: datapoint_timer
+    platform: tuya
+    tuya_id: tuyamcu
+    name: "${fan_name} Timer"
+    enum_datapoint: 22
+    options:
+      0: NIL
+      1: 1_HOUR
+      2: 2_HOUR
+      3: 3_HOUR
+      4: 4_HOUR
+      5: 5_HOUR
+      6: 6_HOUR
+      7: 7_HOUR
+      8: 8_HOUR
+      9: 9_HOUR
+      10: 10_HOUR
+      11: 11_HOUR
+      12: 12_HOUR
+    disabled_by_default: true
+
+# -----------------------------------------------------------------------------
 # Onboard LED (status indicator)
 # -----------------------------------------------------------------------------
 switch:
@@ -152,11 +211,3 @@ switch:
     pin:
       number: 2
       inverted: true
-
-# -----------------------------------------------------------------------------
-# OWiFi RSSI signal strength
-# -----------------------------------------------------------------------------
-sensor:
-  - platform: wifi_signal
-    name: ${fan_rssi}
-    update_interval: 60s
