@@ -67,17 +67,17 @@ esphome:
 # -----------------------------------------------------------------------------
 # Packages
 # -----------------------------------------------------------------------------
-packages:
+# packages:
   # ----------------------------
   # Core packages (always enabled)
   # ----------------------------
-  skyfan_tuya_fan: !include
-    file: tuya_fan.yaml
+  # skyfan_tuya_fan: !include
+  #   file: tuya_fan.yaml
 
   # ----------------------------
   # Conditional packages
   # ----------------------------
-  skyfan_tuya_light: ${ package_light if enable_light else {} }
+  # skyfan_tuya_light: ${ package_light if enable_light else {} }
 
 
 # -----------------------------------------------------------------------------
