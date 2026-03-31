@@ -42,7 +42,31 @@ substitutions:
   package_light: !include
     file: tuya_light.yaml          # Light control package
 
+# -----------------------------------------------------------------------------
+# ESPHome Core
+# -----------------------------------------------------------------------------
+esphome:
+  name: ${device_name}
+  name_add_mac_suffix: true
 
+  # Conditional package inclusion requires ESPHome 2025.12.0+
+  min_version: 2025.12.0
+
+  project:
+    name: tinglis1_skyfandc
+    version: "0.3"
+
+  # Blink onboard LED on boot to stabilise startup (e.g., temp sensors)
+  on_boot:
+    priority: -100
+    then:
+      - switch.turn_on: led
+      - delay: 2s
+      - switch.turn_off: led
+
+# -----------------------------------------------------------------------------
+# Packages
+# -----------------------------------------------------------------------------
 packages:
   # ----------------------------
   # Core packages (always enabled)
@@ -55,28 +79,6 @@ packages:
   # ----------------------------
   skyfan_tuya_light: ${ package_light if enable_light else {} }
 
-
-# -----------------------------------------------------------------------------
-# ESPHome Core
-# -----------------------------------------------------------------------------
-esphome:
-  name: ${device_name}
-  name_add_mac_suffix: true
-
-  # Conditional package inclusion requires ESPHome 2025.12.0+
-  min_version: 2025.12.0
-
-  project:
-    name: tinglis1.skyfandc
-    version: "0.3"
-
-  # Blink onboard LED on boot to stabilise startup (e.g., temp sensors)
-  on_boot:
-    priority: -100
-    then:
-      - switch.turn_on: led
-      - delay: 2s
-      - switch.turn_off: led
 
 # -----------------------------------------------------------------------------
 # Hardware Target
