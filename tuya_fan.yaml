@@ -1,0 +1,316 @@
+# -----------------------------------------------------------------------------
+# Package: Tuya SkyFan DC - Fan Control (Tuya MCU)
+# -----------------------------------------------------------------------------
+# Exposes a fan entity to Home Assistant using ESPHome's "Speed Fan" platform.
+#
+# Design:
+# - Speed Fan (platform: speed) expects a float output (0.0–1.0) and uses
+#   speed_count to convert discrete speeds into output percentages. [1](https://www.speaktothegeek.co.uk/2023/01/esphome-fan-v3-variable-speed-pwm-and-temperature-control/)
+# - This package maps fan speed/direction changes to Tuya MCU datapoints:
+#     DP 1  = On/Off (switch)
+#     DP 2  = Mode  (select: NORMAL / ECO / SLEEP)
+#     DP 3  = Speed (number: 0–5, used when mode=NORMAL)
+#     DP 8  = Direction (select: FORWARD / REVERSE)
+#     DP 22 = Timer (select)
+#
+# Parent requirements:
+# - tuya: id: tuyamcu
+# - substitutions: default_fan_on, default_fan_speed, fan_name
+# -----------------------------------------------------------------------------
+
+substitutions:
+  # Optional: enable extra logs for debugging (default false)
+  enable_skyfan_debug: "false"
+
+  # Datapoint IDs (centralised for easy hardware variations)
+  dp_fan_onoff: "1"
+  dp_fan_mode: "2"
+  dp_fan_speed: "3"
+  dp_fan_direction: "8"
+  dp_fan_timer: "22"
+
+# -----------------------------------------------------------------------------
+# Boot Behaviour
+# -----------------------------------------------------------------------------
+# This on_boot block merges with any parent on_boot blocks.
+# It applies your deterministic default after the MCU has reported initial state.
+esphome:
+  on_boot:
+    priority: -200
+    then:
+      - delay: 3s
+      - if:
+          condition:
+            lambda: "return ${default_fan_on};"
+          then:
+            - fan.turn_on:
+                id: skyfan
+                speed: ${default_fan_speed}
+          else:
+            - fan.turn_off: skyfan
+
+# -----------------------------------------------------------------------------
+# Fan Entity (Home Assistant)
+# -----------------------------------------------------------------------------
+# - platform: speed uses a float output and speed_count discrete levels. [1](https://www.speaktothegeek.co.uk/2023/01/esphome-fan-v3-variable-speed-pwm-and-temperature-control/)
+# - restore_mode NO_RESTORE prevents ESPHome trying to restore any state on boot. [2](https://www.espforbeginners.com/guides/esphome-debugging-configurations/)
+fan:
+  - id: skyfan
+    platform: speed
+    name: ${fan_name}
+    output: skyfan_speed
+    direction_output: skyfan_direction
+    speed_count: 6
+    restore_mode: NO_RESTORE
+
+# -----------------------------------------------------------------------------
+# Outputs (Template)
+# -----------------------------------------------------------------------------
+# These outputs translate HA fan commands into Tuya datapoint updates.
+output:
+  # ---------------------------------------------------------------------------
+  # Fan Speed Output (float 0.0–1.0 from Speed Fan platform)
+  # ---------------------------------------------------------------------------
+  - id: skyfan_speed
+    platform: template
+    type: float
+    write_action:
+      then:
+        # Guard: if we're syncing state FROM Tuya -> HA, ignore write-back.
+        - if:
+            condition:
+              switch.is_on: update_fan
+            then:
+              - switch.turn_off: update_fan
+            else:
+              # Optional debug
+              - if:
+                  condition:
+                    lambda: "return ${enable_skyfan_debug};"
+                  then:
+                    - logger.log:
+                        format: "skyfan: speed output float=%.3f (speed_level=%d)"
+                        args: ["state", "id(skyfan).speed"]
+
+              # Always push direction based on current fan entity state.
+              - select.set_index:
+                  id: datapoint_direction
+                  index: !lambda |-
+                    return (id(skyfan).direction != FanDirection::FORWARD) ? 1 : 0;
+
+              # Off if float near zero
+              - if:
+                  condition:
+                    lambda: "return state < 0.1;"
+                  then:
+                    - switch.turn_off: datapoint_onoff
+                  else:
+                    - switch.turn_on: datapoint_onoff
+
+                    # Map discrete fan speed levels (1–6) to Tuya datapoints:
+                    #   1 -> NORMAL + speed 1
+                    #   2 -> ECO (mode=ECO)
+                    #   3..6 -> NORMAL + speed (speed-1) => 2..5
+                    - if:
+                        condition:
+                          lambda: "return id(skyfan).speed == 2;"
+                        then:
+                          - select.set_index:
+                              id: datapoint_mode
+                              index: 1  # ECO
+                          - number.set:
+                              id: datapoint_speed
+                              value: 1
+                        else:
+                          - select.set_index:
+                              id: datapoint_mode
+                              index: 0  # NORMAL
+                          - number.set:
+                              id: datapoint_speed
+                              value: !lambda |-
+                                int s = id(skyfan).speed;
+                                return (s <= 1) ? 1 : (s - 1);
+
+  # ---------------------------------------------------------------------------
+  # Fan Direction Output (binary)
+  # ---------------------------------------------------------------------------
+  - id: skyfan_direction
+    platform: template
+    type: binary
+    write_action:
+      then:
+        - if:
+            condition:
+              switch.is_on: update_fan
+            then:
+              - switch.turn_off: update_fan
+            else:
+              - if:
+                  condition:
+                    lambda: "return ${enable_skyfan_debug};"
+                  then:
+                    - logger.log:
+                        format: "skyfan: direction write state=%s"
+                        args: ["state ? \"REVERSE\" : \"FORWARD\""]
+
+              - select.set_index:
+                  id: datapoint_direction
+                  index: !lambda |-
+                    return state ? 1 : 0;
+
+# -----------------------------------------------------------------------------
+# Tuya MCU Datapoint Update Hooks
+# -----------------------------------------------------------------------------
+# Parent should define: tuya: id: tuyamcu
+tuya:
+  on_datapoint_update:
+    - sensor_datapoint: ${dp_fan_onoff}
+      datapoint_type: bool
+      then:
+        - switch.turn_on: update_fan
+
+    - sensor_datapoint: ${dp_fan_mode}
+      datapoint_type: enum
+      then:
+        - switch.turn_on: update_fan
+
+    - sensor_datapoint: ${dp_fan_speed}
+      datapoint_type: int
+      then:
+        - switch.turn_on: update_fan
+
+    - sensor_datapoint: ${dp_fan_direction}
+      datapoint_type: enum
+      then:
+        - switch.turn_on: update_fan
+
+    # Timer updates don't need to force fan resync (optional)
+    - sensor_datapoint: ${dp_fan_timer}
+      datapoint_type: enum
+      then: []
+
+# -----------------------------------------------------------------------------
+# Synchronisation Switch (Tuya -> HA)
+# -----------------------------------------------------------------------------
+# When any relevant datapoint changes, flip update_fan ON and bring HA into line.
+switch:
+  - id: update_fan
+    platform: template
+    internal: true
+    optimistic: true
+    turn_on_action:
+      then:
+        - delay: 200ms
+
+        - if:
+            condition:
+              switch.is_on: datapoint_onoff
+            then:
+              # ECO mode maps to fan speed 2.
+              - if:
+                  condition:
+                    lambda: "return (id(datapoint_mode).active_index() == 1);"
+                  then:
+                    - if:
+                        condition:
+                          lambda: "return ${enable_skyfan_debug};"
+                        then:
+                          - logger.log: "skyfan: sync ECO -> speed 2"
+
+                    - fan.turn_on:
+                        id: skyfan
+                        speed: 2
+                        direction: !lambda |-
+                          bool rev = (id(datapoint_direction).active_index() != 0);
+                          return rev ? FanDirection::REVERSE : FanDirection::FORWARD;
+
+                  else:
+                    # NORMAL mode: map datapoint_speed (0–5) to fan speed:
+                    # dp=1 -> speed 1
+                    # dp=2..5 -> speed (dp+1) => 3..6
+                    - fan.turn_on:
+                        id: skyfan
+                        speed: !lambda |-
+                          int dp = (int) id(datapoint_speed).state;
+                          if (dp <= 1) return 1;
+                          return dp + 1;
+                        direction: !lambda |-
+                          bool rev = (id(datapoint_direction).active_index() != 0);
+                          return rev ? FanDirection::REVERSE : FanDirection::FORWARD;
+
+            else:
+              - if:
+                  condition:
+                    lambda: "return ${enable_skyfan_debug};"
+                  then:
+                    - logger.log: "skyfan: sync OFF"
+              - fan.turn_off: skyfan
+
+  # Datapoint 1: On/Off (internal plumbing)
+  - id: datapoint_onoff
+    platform: tuya
+    tuya_id: tuyamcu
+    name: "${fan_name} Switch"
+    switch_datapoint: ${dp_fan_onoff}
+    internal: true
+
+# -----------------------------------------------------------------------------
+# Tuya Datapoint Entities
+# -----------------------------------------------------------------------------
+select:
+  # Datapoint 2: Mode
+  - id: datapoint_mode
+    platform: tuya
+    tuya_id: tuyamcu
+    name: "${fan_name} Mode"
+    enum_datapoint: ${dp_fan_mode}
+    options:
+      0: NORMAL
+      1: ECO
+      2: SLEEP
+    disabled_by_default: true
+
+  # Datapoint 8: Direction (internal plumbing)
+  - id: datapoint_direction
+    platform: tuya
+    tuya_id: tuyamcu
+    name: "${fan_name} Direction"
+    enum_datapoint: ${dp_fan_direction}
+    options:
+      0: FORWARD
+      1: REVERSE
+    internal: true
+
+  # Datapoint 22: Timer
+  - id: datapoint_timer
+    platform: tuya
+    tuya_id: tuyamcu
+    name: "${fan_name} Timer"
+    enum_datapoint: ${dp_fan_timer}
+    options:
+      0: NIL
+      1: 1_HOUR
+      2: 2_HOUR
+      3: 3_HOUR
+      4: 4_HOUR
+      5: 5_HOUR
+      6: 6_HOUR
+      7: 7_HOUR
+      8: 8_HOUR
+      9: 9_HOUR
+      10: 10_HOUR
+      11: 11_HOUR
+      12: 12_HOUR
+    disabled_by_default: true
+
+number:
+  # Datapoint 3: Speed (0–5 in this device, internal plumbing)
+  - id: datapoint_speed
+    platform: tuya
+    tuya_id: tuyamcu
+    name: "${fan_name} Speed"
+    number_datapoint: ${dp_fan_speed}
+    min_value: 0
+    max_value: 5
+    step: 1
+    internal: true
