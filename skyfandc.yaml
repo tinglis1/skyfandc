@@ -174,7 +174,7 @@ light:
     # color_temperature_invert: true
     # cold_white_color_temperature: 6500 K
     # warm_white_color_temperature: 3000 K
-    restore_mode: ALLWAYS_ON
+    restore_mode: ALWAYS_ON
     disabled_by_default: false
 
 # -----------------------------------------------------------------------------
