@@ -215,6 +215,17 @@ select:
       12: 12_HOUR
     disabled_by_default: true
 
+  # Datapoint 119: Light Colour Temperature
+  - platform: tuya
+    name: "Light Colour Temperature"
+    enum_datapoint: 19
+    optimistic: true
+    options:
+      0: "Cool White"
+      1: "Natural White"
+      2: "Warm White"
+    disabled_by_default: false
+  
 # -----------------------------------------------------------------------------
 # Onboard LED (status indicator)
 # -----------------------------------------------------------------------------
