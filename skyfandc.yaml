@@ -4,24 +4,13 @@
 # - Product: easy-skyfandc module from Egglec
 # - Board: Wemos D1 Mini (ESP8266)
 # - Tuya MCU over UART (UART0 GPIO1/GPIO3)
-# - Optional: Light + Temperature + power sensor packages (conditionally included)
+# - Fan onyl. Always on and configurable speed
 #
 # Notes:
 # - Conditional package inclusion uses Jinja expressions in ${ ... } and requires
 #   ESPHome >= 2025.12.0
 # - Logger serial is disabled because the Tuya MCU uses the UART pins
 # -----------------------------------------------------------------------------
-
-# -----------------------------------------------------------------------------
-# Extenal compoents
-# -----------------------------------------------------------------------------
-# external_components:
-#   - source:
-#       type: git
-#       url: https://github.com/tinglis1/esphome
-#       ref: light-norestore          # or a tag/commit SHA (recommended)
-#       # path: esphome/components   # only needed if your repo layout is non-standard
-#     components: [ light ]
 
 # -----------------------------------------------------------------------------
 # Substitutions
@@ -33,7 +22,6 @@ substitutions:
   name: skyfandc
   device_name: easy-skyfandc
   fan_name: SkyFanDC
-  light_name: SkyFanDC-Light
   skyfan_model: "SKY1203"
   fan_rssi: "SkyFanDC-RSSI"
   
@@ -42,7 +30,7 @@ substitutions:
   # ----------------------------
   # Set to false to default the fan to OFF on every boot
   # Default speed on boot (1–6), only applies when default_fan_on is true
-  default_fan_on: "false"
+  default_fan_on: "true"
   default_fan_speed: "6"
 
 # -----------------------------------------------------------------------------
@@ -154,28 +142,10 @@ fan:
     switch_datapoint: 1
     direction_datapoint: 8
     name: ${fan_name}
-    restore_mode: RESTORE_DEFAULT_OFF
+    restore_mode: RESTORE_DEFAULT_ON
     disabled_by_default: false
     speed_count: 6
 
-# -----------------------------------------------------------------------------
-# Lights
-# -----------------------------------------------------------------------------
-light:
-  - id: skyfan_light
-    platform: tuya
-    name: ${light_name}
-    switch_datapoint: 15
-    dimmer_datapoint: 16
-    min_value: 0
-    max_value: 5
-    # color_temperature_datapoint: 19
-    # color_temperature_max_value: 2
-    # color_temperature_invert: true
-    # cold_white_color_temperature: 6500 K
-    # warm_white_color_temperature: 3000 K
-    restore_mode: ALWAYS_ON
-    disabled_by_default: false
 
 # -----------------------------------------------------------------------------
 # Tuya Datapoint Entities
@@ -215,17 +185,6 @@ select:
       12: 12_HOUR
     disabled_by_default: true
 
-  # Datapoint 119: Light Colour Temperature
-  - platform: tuya
-    name: "Light Colour Temperature"
-    enum_datapoint: 19
-    optimistic: true
-    options:
-      0: "Cool White"
-      1: "Natural White"
-      2: "Warm White"
-    disabled_by_default: false
-  
 # -----------------------------------------------------------------------------
 # Onboard LED (status indicator)
 # -----------------------------------------------------------------------------
