@@ -142,7 +142,7 @@ fan:
     switch_datapoint: 1
     direction_datapoint: 8
     name: ${fan_name}
-    restore_mode: RESTORE_DEFAULT_ON
+    restore_mode: ALWAYS_ON
     disabled_by_default: false
     speed_count: 6
 
