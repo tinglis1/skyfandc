@@ -4,10 +4,8 @@
 # - Product: easy-skyfandc module from Egglec
 # - Board: Wemos D1 Mini (ESP8266)
 # - Tuya MCU over UART (UART0 GPIO1/GPIO3)
-# - Fan onyl. Always on and configurable speed
 #
 # Notes:
-# - Conditional package inclusion uses Jinja expressions in ${ ... } and requires
 #   ESPHome >= 2025.12.0
 # - Logger serial is disabled because the Tuya MCU uses the UART pins
 # -----------------------------------------------------------------------------
@@ -25,14 +23,6 @@ substitutions:
   skyfan_model: "SKY1203"
   fan_rssi: "SkyFanDC-RSSI"
   
-  # ----------------------------
-  # Fan default settings
-  # ----------------------------
-  # Set to false to default the fan to OFF on every boot
-  # Default speed on boot (1–6), only applies when default_fan_on is true
-  default_fan_on: "true"
-  default_fan_speed: "6"
-
 # -----------------------------------------------------------------------------
 # Core config
 # -----------------------------------------------------------------------------
@@ -51,32 +41,6 @@ esphome:
 
   # If set turn the fan on when powered on.
   on_boot:
-    - priority: -200
-      then:
-      - logger.log: "Boot: waiting for Tuya MCU to become ready..."
-      - wait_until:
-          timeout: 30s
-          condition:
-            binary_sensor.is_on: tuya_mcu_ready
-      - if:
-          condition:
-            binary_sensor.is_on: tuya_mcu_ready
-          then:
-            - logger.log: "Boot: Tuya MCU ready ✅"
-            - delay: 3s
-            - logger.log: "Fan setting to default state"
-            - if:
-                condition:
-                  lambda: "return ${default_fan_on};"
-                then:
-                  - fan.turn_on:
-                      id: skyfandc
-                      speed: ${default_fan_speed}
-                else:
-                  - fan.turn_off: skyfandc
-          else:
-            - logger.log: "Boot: Tuya MCU NOT ready after timeout ⚠️ (continuing)"
-
     - priority: -100
       then:
         - switch.turn_on: led
@@ -85,7 +49,7 @@ esphome:
 
 #Dashboard import if you want to adopt the device on your esphome dashboard
 dashboard_import:
-  package_import_url: github://tinglis1/skyfandc/micro_skyfan2.yaml@Dev
+  package_import_url: github://tinglis1/skyfandc/skyfandc.yaml@fan-only
 
 # -----------------------------------------------------------------------------
 # Logging
@@ -133,30 +97,6 @@ uart:
 
 tuya:
   id: tuyamcu
-  on_datapoint_update:
-    sensor_datapoint: 1
-    then:
-      - if:
-          condition:
-            lambda: 'return !id(tuya_ready_flag);'
-          then:
-            - globals.set:
-                id: tuya_ready_flag
-                value: "true"
-            - logger.log: "Tuya MCU: first datapoint received -> READY"
-
-globals:
-  - id: tuya_ready_flag
-    type: bool
-    restore_value: no
-    initial_value: "false"
-
-binary_sensor:
-  - platform: template
-    id: tuya_mcu_ready
-    name: "Tuya MCU Ready"
-    lambda: |-
-      return id(tuya_ready_flag);
 
 # -----------------------------------------------------------------------------
 # WiFi RSSI signal strength
@@ -179,7 +119,6 @@ fan:
     restore_mode: ALWAYS_ON
     disabled_by_default: false
     speed_count: 6
-
 
 # -----------------------------------------------------------------------------
 # Tuya Datapoint Entities
