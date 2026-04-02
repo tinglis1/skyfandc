@@ -53,16 +53,30 @@ esphome:
   on_boot:
     - priority: -200
       then:
-        - delay: 3s
-        - if:
-            condition:
-              lambda: "return ${default_fan_on};"
-            then:
-              - fan.turn_on:
-                  id: skyfandc
-                  speed: ${default_fan_speed}
-            else:
-              - fan.turn_off: skyfandc
+      - logger.log: "Boot: waiting for Tuya MCU to become ready..."
+      - wait_until:
+          timeout: 30s
+          condition:
+            binary_sensor.is_on: tuya_mcu_ready
+      - if:
+          condition:
+            binary_sensor.is_on: tuya_mcu_ready
+          then:
+            - logger.log: "Boot: Tuya MCU ready ✅"
+            - delay: 3s
+            - logger.log: "Fan setting to default state"
+            - if:
+                condition:
+                  lambda: "return ${default_fan_on};"
+                then:
+                  - fan.turn_on:
+                      id: skyfandc
+                      speed: ${default_fan_speed}
+                else:
+                  - fan.turn_off: skyfandc
+          else:
+            - logger.log: "Boot: Tuya MCU NOT ready after timeout ⚠️ (continuing)"
+
     - priority: -100
       then:
         - switch.turn_on: led
@@ -79,10 +93,6 @@ dashboard_import:
 # Tuya MCU uses the UART pins, so disable the serial logger.
 logger:
   baud_rate: 0
-
-ota:
-  - platform: esphome
-
 
 # -----------------------------------------------------------------------------
 # Tuya MCU config
@@ -123,9 +133,33 @@ uart:
 
 tuya:
   id: tuyamcu
+  on_datapoint_update:
+    sensor_datapoint: 1
+    then:
+      - if:
+          condition:
+            lambda: 'return !id(tuya_ready_flag);'
+          then:
+            - globals.set:
+                id: tuya_ready_flag
+                value: "true"
+            - logger.log: "Tuya MCU: first datapoint received -> READY"
+
+globals:
+  - id: tuya_ready_flag
+    type: bool
+    restore_value: no
+    initial_value: "false"
+
+binary_sensor:
+  - platform: template
+    id: tuya_mcu_ready
+    name: "Tuya MCU Ready"
+    lambda: |-
+      return id(tuya_ready_flag);
 
 # -----------------------------------------------------------------------------
-# OWiFi RSSI signal strength
+# WiFi RSSI signal strength
 # -----------------------------------------------------------------------------
 sensor:
   - platform: wifi_signal
