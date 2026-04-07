@@ -4,7 +4,6 @@
 # - Product: easy-skyfandc module from Egglec
 # - Board: Wemos D1 Mini (ESP8266)
 # - Tuya MCU over UART (UART0 GPIO1/GPIO3)
-# - Optional: Light + Temperature + power sensor packages (conditionally included)
 #
 # Notes:
 # - Conditional package inclusion uses Jinja expressions in ${ ... } and requires
@@ -82,7 +81,7 @@ esphome:
 
 #Dashboard import if you want to adopt the device on your esphome dashboard
 # dashboard_import:
-#   package_import_url: github://tinglis1/skyfandc/micro_skyfan2.yaml@Dev
+#   package_import_url: github://tinglis1/skyfandc/micro_skyfan2.yaml@fan-only3
 
 # -----------------------------------------------------------------------------
 # Logging
@@ -94,6 +93,77 @@ logger:
 ota:
   - platform: esphome
 
+
+# -----------------------------------------------------------------------------
+# Global variables
+# -----------------------------------------------------------------------------
+globals:
+  # Prevent feedback loops when we update HA state from Tuya updates
+  - id: tuya_syncing
+    type: bool
+    restore_value: no
+    initial_value: "false"
+
+# -----------------------------------------------------------------------------
+# Scripts
+# -----------------------------------------------------------------------------
+script:
+  # Called whenever any relevant Tuya DP updates
+  - id: sync_fan_from_tuya
+    mode: restart
+    then:
+      - lambda: |-
+          id(tuya_syncing) = true;
+      # Small debounce to allow multiple DP updates to land before we read them
+      - delay: 200ms
+
+      - if:
+          condition:
+            switch.is_on: datapoint_onoff
+          then:
+            # If ECO mode, represent as HA speed 2
+            - if:
+                condition:
+                  lambda: 'return id(datapoint_mode).active_index() == 1;'
+                then:
+                  - logger.log: "Tuya->HA sync: ON, ECO => HA speed 2"
+                  - fan.turn_on:
+                      id: skyfan
+                      speed: 2
+                      direction: !lambda |-
+                        return (id(datapoint_direction).active_index() != 0)
+                          ? FanDirection::REVERSE
+                          : FanDirection::FORWARD;
+                else:
+                  # NORMAL/SLEEP: map Tuya raw speed to HA speeds
+                  # Your existing logic:
+                  #   raw=1 -> HA speed 1
+                  #   raw>=2 -> HA speed = raw + 1
+                  - lambda: |-
+                      int raw = (int) id(datapoint_speed).state;
+                      int ha_speed = (raw <= 1) ? 1 : (raw + 1);
+                      if (ha_speed < 1) ha_speed = 1;
+                      if (ha_speed > 6) ha_speed = 6;
+                      ESP_LOGI("skyfan", "Tuya->HA sync: ON, mode=%d raw_speed=%d => HA speed %d",
+                               id(datapoint_mode).active_index(), raw, ha_speed);
+                  - fan.turn_on:
+                      id: skyfan
+                      speed: !lambda |-
+                        int raw = (int) id(datapoint_speed).state;
+                        int ha_speed = (raw <= 1) ? 1 : (raw + 1);
+                        if (ha_speed < 1) ha_speed = 1;
+                        if (ha_speed > 6) ha_speed = 6;
+                        return ha_speed;
+                      direction: !lambda |-
+                        return (id(datapoint_direction).active_index() != 0)
+                          ? FanDirection::REVERSE
+                          : FanDirection::FORWARD;
+          else:
+            - logger.log: "Tuya->HA sync: OFF"
+            - fan.turn_off: skyfan
+
+      - lambda: |-
+          id(tuya_syncing) = false;
 
 # -----------------------------------------------------------------------------
 # Tuya MCU config
@@ -135,22 +205,23 @@ uart:
 tuya:
   id: tuyamcu
   on_datapoint_update:
+    # Any relevant DP update triggers a resync into HA.
     - sensor_datapoint: 1
       datapoint_type: bool
       then:
-        - switch.turn_on: update_fan
+        - script.execute: sync_fan_from_tuya
     - sensor_datapoint: 2
       datapoint_type: enum
       then:
-        - switch.turn_on: update_fan 
+        - script.execute: sync_fan_from_tuya
     - sensor_datapoint: 3
       datapoint_type: int
       then:
-        - switch.turn_on: update_fan
+        - script.execute: sync_fan_from_tuya
     - sensor_datapoint: 8
       datapoint_type: enum
       then:
-        - switch.turn_on: update_fan
+        - script.execute: sync_fan_from_tuya
     - sensor_datapoint: 22
       datapoint_type: enum
       then: []
@@ -169,95 +240,80 @@ sensor:
 fan:
   - id: skyfan
     platform: speed
+    name: ${fan_name}
     output: skyfan_speed
     direction_output: skyfan_direction
-    name: ${fan_name}
     restore_mode: NO_RESTORE
     disabled_by_default: false
     speed_count: 6
 
+# -----------------------------------------------------------------------------
+# Output
+# -----------------------------------------------------------------------------
 output:
-  # When the fan speed is changed by the fan entity in Home Assistant, update
-  # the tuyamcu datapoints that control the fan motor.
+  # Fan speed output is float 0.0..1.0.
+  # Map HA 1..6 steps onto Tuya raw 0..5.
   - id: skyfan_speed
     platform: template
     type: float
-    write_action: 
+    write_action:
       then:
         - if:
             condition:
-              - switch.is_on: update_fan
+              lambda: 'return id(tuya_syncing);'
             then:
-              - switch.turn_off: update_fan            
-            else:             
-              - logger.log:
-                  format: "skyfan_speed is %1f"
-                  args: [ 'state' ]
+              - logger.log: "HA->Tuya speed write suppressed (tuya_syncing=true)"
+            else:
+              - lambda: |-
+                  ESP_LOGI("skyfan", "HA->Tuya speed write: state=%0.3f", state);
+
+              # Always push direction whenever we write speed (keeps MCU aligned)
               - select.set_index:
                   id: datapoint_direction
                   index: !lambda |-
-                    return (id(skyfan).direction != FanDirection::FORWARD ? 1 : 0);              
+                    return (id(skyfan).direction != FanDirection::FORWARD) ? 1 : 0;
+
+              # OFF threshold (same behaviour as your original)
               - if:
                   condition:
-                    lambda: 'return state < 0.1 ;'
+                    lambda: 'return state < 0.10;'
                   then:
                     - switch.turn_off: datapoint_onoff
                   else:
-                    - switch.turn_on: datapoint_onoff                                     
-                    - if:
-                        condition:
-                          lambda: 'return (state < 0.3);'
-                        then:
-                          - select.set_index:
-                              id: datapoint_mode
-                              index: 0
-                          - number.set:
-                              id: datapoint_speed
-                              value: 1
-                        else:
-                          - if:
-                              condition:
-                                lambda: 'return (state < 0.4);'
-                              then:
-                                - select.set_index:
-                                    id: datapoint_mode
-                                    index: 1
-                              else:                        
-                                - select.set_index:
-                                    id: datapoint_mode
-                                    index: 0
-                                - if:
-                                    condition:
-                                      lambda: 'return (state < 0.6);'
-                                    then:
-                                      - number.set:
-                                          id: datapoint_speed
-                                          value: 2
-                                    else:                  
-                                      - if:
-                                          condition:
-                                            lambda: 'return (state < 0.8);'
-                                          then:
-                                            - number.set:
-                                                id: datapoint_speed
-                                                value: 3
-                                          else:                              
-                                            - if:
-                                                condition:
-                                                  lambda: 'return (state < 0.9);'
-                                                then:
-                                                  - number.set:
-                                                      id: datapoint_speed
-                                                      value: 4
-                                                else:                              
-                                                  - number.set:
-                                                      id: datapoint_speed
-                                                      value: 5        
+                    - switch.turn_on: datapoint_onoff
 
+                    # Convert float 0..1 to HA step 1..6
+                    - lambda: |-
+                        int step = (int) ceilf(state * 6.0f);  // 1..6
+                        if (step < 1) step = 1;
+                        if (step > 6) step = 6;
+
+                        // HA step 1..6 -> Tuya raw 0..5
+                        int raw = step - 1;
+                        if (raw < 0) raw = 0;
+                        if (raw > 5) raw = 5;
+
+                        ESP_LOGI("skyfan", "HA->Tuya: step=%d => raw_speed=%d", step, raw);
+                        auto call = id(datapoint_speed).make_call();
+                        call.set_value(raw);
+                        call.perform();
+
+  # Implement direction_output so direction-only changes actually write to Tuya
   - id: skyfan_direction
     platform: template
     type: binary
-    write_action: []
+    write_action:
+      then:
+        - if:
+            condition:
+              lambda: 'return id(tuya_syncing);'
+            then:
+              - logger.log: "HA->Tuya direction write suppressed (tuya_syncing=true)"
+            else:
+              - select.set_index:
+                  id: datapoint_direction
+                  index: !lambda |-
+                    return (id(skyfan).direction != FanDirection::FORWARD) ? 1 : 0;
 
 # -----------------------------------------------------------------------------
 # Tuya Datapoint Entities
@@ -267,7 +323,7 @@ select:
   - id: datapoint_mode
     platform: tuya
     tuya_id: tuyamcu
-    name: "${fan_name} Mode"
+    name: ${fan_name} Mode
     enum_datapoint: 2
     options:
       0: NORMAL
@@ -275,11 +331,22 @@ select:
       2: SLEEP
     disabled_by_default: true
 
+  # Datapoint 8: Direction
+  - id: datapoint_direction
+    platform: tuya
+    tuya_id: tuyamcu
+    name: ${fan_name} Direction
+    enum_datapoint: 8
+    options:
+      0: FORWARD
+      1: REVERSE
+    internal: true
+    
   # Datapoint 22: Timer
   - id: datapoint_timer
     platform: tuya
     tuya_id: tuyamcu
-    name: "${fan_name} Timer"
+    name: ${fan_name} Timer
     enum_datapoint: 22
     options:
       0: NIL
@@ -299,63 +366,16 @@ select:
 
   
 # -----------------------------------------------------------------------------
-# Onboard LED (status indicator)
+# Switches
 # -----------------------------------------------------------------------------
 switch:
+  # Onboard LED (status indicator)
   - platform: gpio
     id: led
     pin:
       number: 2
       inverted: true
-  # A datapoint has changed in tuyamcu. Update the fan entity in Home Assistant 
-  # to be consistent with the new datapoint values.
-  - id: update_fan
-    platform: template
-    optimistic: true
-    turn_on_action:
-      then:
-        - delay: 200ms
-        - if:
-            condition: 
-              - switch.is_on: datapoint_onoff
-            then:
-              - if:
-                  condition:
-                    - lambda: 'return ( id(datapoint_mode).active_index() == 1 );'
-                  then:
-                    - logger.log: "update_fan ECO therefore set speed 2"
-                    - fan.turn_on: 
-                        id: skyfan
-                        speed: '2'
-                        direction: !lambda |-
-                          bool val = ( id(datapoint_direction).active_index() != 0 );
-                          return val ? FanDirection::REVERSE : FanDirection::FORWARD;
-                  else:
-                    - if:
-                        condition:
-                          - lambda: 'return ( id(datapoint_speed).state == 1 );'
-                        then:
-                          - logger.log: "update_fan Set speed 1"
-                          - fan.turn_on: 
-                              id: skyfan
-                              speed: '1'
-                              direction: !lambda |-
-                                bool val = ( id(datapoint_direction).active_index() != 0 );
-                                return val ? FanDirection::REVERSE : FanDirection::FORWARD;
-                        else:
-                          - logger.log: "update_fan Set speed plus 1"
-                          - fan.turn_on: 
-                              id: skyfan
-                              speed: !lambda |-
-                                return (id(datapoint_speed).state + 1);
-                              direction: !lambda |-
-                                bool val = ( id(datapoint_direction).active_index() != 0 );
-                                return val ? FanDirection::REVERSE : FanDirection::FORWARD;
-            else:
-              - logger.log: "update_fan Turn off"
-              - fan.turn_off: 
-                  id: skyfan            
-
+  
   - id: datapoint_onoff
     platform: tuya
     tuya_id: tuyamcu
@@ -363,7 +383,9 @@ switch:
     switch_datapoint: 1
     internal: true
 
-
+# -----------------------------------------------------------------------------
+# number
+# -----------------------------------------------------------------------------
 number:
   - id: datapoint_speed
     platform: tuya
