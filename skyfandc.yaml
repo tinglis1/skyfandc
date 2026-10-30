@@ -13,17 +13,6 @@
 # -----------------------------------------------------------------------------
 
 # -----------------------------------------------------------------------------
-# Extenal compoents
-# -----------------------------------------------------------------------------
-external_components:
-  - source:
-      type: git
-      url: https://github.com/tinglis1/esphome
-      ref: light-norestore          # or a tag/commit SHA (recommended)
-      # path: esphome/components   # only needed if your repo layout is non-standard
-    components: [ light ]
-
-# -----------------------------------------------------------------------------
 # Substitutions
 # -----------------------------------------------------------------------------
 substitutions:
@@ -55,11 +44,11 @@ esphome:
   name: ${name}
   name_add_mac_suffix: false
 
-  min_version: 2025.12.0
+  min_version: 2026.10.0
 
   project:
     name: "tinglis1.skyfandc"
-    version: "0.3"
+    version: "0.4"
 
   # If set turn the fan on when powered on.
   on_boot:
@@ -83,7 +72,7 @@ esphome:
 
 #Dashboard import if you want to adopt the device on your esphome dashboard
 dashboard_import:
-  package_import_url: github://tinglis1/skyfandc/micro_skyfan2.yaml@Dev
+  package_import_url: github://tinglis1/skyfandc/skyfandc.yaml@no-restore
 
 # -----------------------------------------------------------------------------
 # Logging
@@ -174,7 +163,7 @@ light:
     # color_temperature_invert: true
     # cold_white_color_temperature: 6500 K
     # warm_white_color_temperature: 3000 K
-    restore_mode: NO_RESTORE
+    restore_state: none
     disabled_by_default: false
 
 # -----------------------------------------------------------------------------
